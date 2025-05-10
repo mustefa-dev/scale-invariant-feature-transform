@@ -3,7 +3,7 @@
 
 This backend provides API endpoints for processing images with OpenCV and the SIFT algorithm.
 
-## Setup
+## Development Setup
 
 1. Create a Python virtual environment:
    ```
@@ -19,7 +19,12 @@ This backend provides API endpoints for processing images with OpenCV and the SI
    pip install -r requirements.txt
    ```
 
-4. Run the Flask application:
+4. Create a `.env` file from the example:
+   ```
+   cp .env.example .env
+   ```
+   
+5. Run the Flask application for development:
    ```
    python app.py
    ```
@@ -40,16 +45,43 @@ The backend will run on http://localhost:5000
 
 ## Production Deployment
 
-For production deployment, consider:
+### Option 1: Traditional Server
 
-1. Using a production WSGI server like Gunicorn:
+1. Set up a server with Python installed
+2. Clone this repository to the server
+3. Create a virtual environment and install dependencies
+4. Set up environment variables in `.env` file:
    ```
-   pip install gunicorn
-   gunicorn -b 0.0.0.0:5000 app:app
+   PORT=5000
+   HOST=0.0.0.0
+   DEBUG=False
+   CORS_ORIGIN=https://your-frontend-domain.com
+   ```
+5. Run with Gunicorn:
+   ```
+   gunicorn -b 0.0.0.0:5000 wsgi:app
+   ```
+6. Set up a reverse proxy with Nginx or similar
+
+### Option 2: Docker Deployment
+
+1. Build Docker image:
+   ```
+   docker build -t cv-sift-api .
+   ```
+2. Run container:
+   ```
+   docker run -p 5000:5000 -e CORS_ORIGIN=https://your-frontend-domain.com cv-sift-api
    ```
 
-2. Set up a proper file storage solution instead of using local directories
+### Option 3: Platform as a Service (PaaS)
 
-3. Add proper error handling, logging, and security measures
+Deploy to platforms like Heroku, Google Cloud Run, or AWS Elastic Beanstalk using the included `Procfile`.
 
-4. Consider containerizing the application with Docker for easier deployment
+## Important Production Considerations
+
+1. Set up proper logging and monitoring
+2. Implement rate limiting for API endpoints
+3. Configure proper storage solution instead of local file system
+4. Set up SSL/TLS for secure communication
+5. Add authentication if needed

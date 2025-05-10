@@ -5,6 +5,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { toast } from "@/components/ui/sonner";
 import { useNavigate } from "react-router-dom";
 import { AlertCircle, Eye, Image, Layers, Search, Camera } from "lucide-react";
+import { fetchAPI } from "@/utils/api";
+import config from "@/config";
 
 const Index = () => {
   const [backendStatus, setBackendStatus] = useState<string>("Checking backend connection...");
@@ -12,15 +14,14 @@ const Index = () => {
   
   useEffect(() => {
     // Check if backend is running
-    fetch('http://localhost:5000/api/health')
-      .then(response => response.json())
+    fetchAPI('/api/health')
       .then(data => {
         setBackendStatus("Connected to backend");
         toast.success("Connected to Flask backend");
       })
       .catch(error => {
         setBackendStatus("Backend connection failed");
-        toast.error("Could not connect to Flask backend. Please ensure it's running.");
+        toast.error(`Could not connect to Flask backend at ${config.apiUrl}. Please ensure it's running.`);
         console.error("Backend connection error:", error);
       });
   }, []);
@@ -84,6 +85,15 @@ const Index = () => {
               </div>
             )}
           </p>
+          <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-md max-w-2xl mx-auto">
+            <h2 className="text-lg font-medium mb-1">Deployment Information</h2>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Current environment: <code className="bg-gray-200 dark:bg-gray-800 px-1 py-0.5 rounded">{import.meta.env.MODE}</code>
+            </p>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              API URL: <code className="bg-gray-200 dark:bg-gray-800 px-1 py-0.5 rounded">{config.apiUrl}</code>
+            </p>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

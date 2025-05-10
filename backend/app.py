@@ -1,4 +1,3 @@
-
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 import os
@@ -6,9 +5,15 @@ import cv2
 import numpy as np
 import uuid
 import time
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+# Configure CORS with environment variable
+cors_origin = os.getenv('CORS_ORIGIN', 'http://localhost:5173')
+CORS(app, resources={r"/api/*": {"origins": cors_origin}})
 
 # Create directories for uploads and results if they don't exist
 os.makedirs('static/uploads', exist_ok=True)
@@ -452,4 +457,7 @@ def index():
     return jsonify({"message": "SIFT Computer Vision API is running"})
 
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=5000)
+    port = int(os.getenv('PORT', 5000))
+    host = os.getenv('HOST', '0.0.0.0')
+    debug = os.getenv('DEBUG', 'False').lower() == 'true'
+    app.run(debug=debug, host=host, port=port)
