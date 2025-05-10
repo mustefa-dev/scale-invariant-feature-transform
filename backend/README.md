@@ -25,3 +25,31 @@ This backend provides API endpoints for processing images with OpenCV and the SI
    ```
 
 The backend will run on http://localhost:5000
+
+## API Endpoints
+
+### Health Check
+- `GET /api/health`: Check if the backend is running
+
+### Image Processing
+- `POST /api/upload`: Generic file upload endpoint
+- `POST /api/stitch-images`: Stitch multiple images to create a panorama
+- `POST /api/detect-object`: Detect if an object appears in a scene
+- `POST /api/recognize-object`: Recognize an object from a database of known objects
+- `POST /api/track-object`: Track objects in video using SIFT features
+
+## Production Deployment
+
+For production deployment, consider:
+
+1. Using a production WSGI server like Gunicorn:
+   ```
+   pip install gunicorn
+   gunicorn -b 0.0.0.0:5000 app:app
+   ```
+
+2. Set up a proper file storage solution instead of using local directories
+
+3. Add proper error handling, logging, and security measures
+
+4. Consider containerizing the application with Docker for easier deployment

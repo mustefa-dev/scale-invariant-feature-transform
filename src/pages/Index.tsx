@@ -3,9 +3,12 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/components/ui/sonner";
+import { useNavigate } from "react-router-dom";
+import { AlertCircle, Eye, Image, Layers, Search, Camera } from "lucide-react";
 
 const Index = () => {
   const [backendStatus, setBackendStatus] = useState<string>("Checking backend connection...");
+  const navigate = useNavigate();
   
   useEffect(() => {
     // Check if backend is running
@@ -26,27 +29,32 @@ const Index = () => {
     {
       title: "Object Tracking Using SIFT Features",
       description: "Track objects in videos using SIFT keypoint features",
-      comingSoon: true
+      path: "/object-tracking",
+      icon: <Eye className="h-10 w-10 text-blue-500" />
     },
     {
       title: "Panorama Image Stitching Using SIFT and SURF",
       description: "Create panoramas by stitching overlapping images",
-      comingSoon: true
+      path: "/panorama-stitching",
+      icon: <Layers className="h-10 w-10 text-green-500" />
     },
     {
       title: "Object Detection with SIFT Features",
       description: "Detect if an object appears in a scene using feature matching",
-      comingSoon: true
+      path: "/object-detection",
+      icon: <Search className="h-10 w-10 text-purple-500" />
     },
     {
       title: "Image Stitching with SIFT",
       description: "Stitch multiple images together using SIFT-based keypoint detection",
-      comingSoon: true
+      path: "/image-stitching",
+      icon: <Image className="h-10 w-10 text-orange-500" />
     },
     {
       title: "Object Recognition Using SIFT",
       description: "Recognize objects by matching against a database of known objects",
-      comingSoon: true
+      path: "/object-recognition",
+      icon: <Camera className="h-10 w-10 text-red-500" />
     }
   ];
 
@@ -59,27 +67,44 @@ const Index = () => {
             Explore the power of SIFT algorithm in various computer vision tasks
           </p>
           <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-            Backend Status: <span className={backendStatus.includes("Connected") ? "text-green-500" : "text-red-500"}>
+            Backend Status: 
+            <span className={
+              backendStatus.includes("Connected") 
+                ? "text-green-500 ml-1 font-medium" 
+                : "text-red-500 ml-1 font-medium"
+            }>
               {backendStatus}
             </span>
+            {backendStatus.includes("failed") && (
+              <div className="mt-1 flex items-center justify-center">
+                <AlertCircle className="h-4 w-4 text-red-500 mr-1" />
+                <span className="text-xs text-red-500">
+                  Please run the Flask backend with: <code className="bg-gray-200 px-1 py-0.5 rounded text-red-600">python backend/app.py</code>
+                </span>
+              </div>
+            )}
           </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {applications.map((app, index) => (
-            <Card key={index} className="overflow-hidden">
+            <Card key={index} className="overflow-hidden hover:shadow-lg transition-shadow">
               <CardHeader>
                 <CardTitle>{app.title}</CardTitle>
                 <CardDescription>{app.description}</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="h-40 bg-gray-200 dark:bg-gray-800 rounded-md flex items-center justify-center">
-                  <span className="text-gray-500 dark:text-gray-400">Application Preview</span>
+                  {app.icon}
                 </div>
               </CardContent>
               <CardFooter>
-                <Button className="w-full" disabled={app.comingSoon}>
-                  {app.comingSoon ? "Coming Soon" : "Try Now"}
+                <Button 
+                  className="w-full"
+                  disabled={backendStatus.includes("failed")}
+                  onClick={() => navigate(app.path)}
+                >
+                  {backendStatus.includes("Connected") ? "Try Now" : "Backend Required"}
                 </Button>
               </CardFooter>
             </Card>
