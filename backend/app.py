@@ -12,7 +12,7 @@ load_dotenv()
 
 app = Flask(__name__)
 # Configure CORS with environment variable
-cors_origin = os.getenv('CORS_ORIGIN', 'http://localhost:5173')
+cors_origin = os.getenv('CORS_ORIGIN', 'http://localhost:3000')
 CORS(app, resources={r"/api/*": {"origins": cors_origin}})
 
 # Create directories for uploads and results if they don't exist
