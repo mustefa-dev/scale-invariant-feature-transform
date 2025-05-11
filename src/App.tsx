@@ -11,6 +11,7 @@ import PanoramaStitching from "./pages/PanoramaStitching";
 import ObjectDetection from "./pages/ObjectDetection";
 import ImageStitching from "./pages/ImageStitching";
 import ObjectRecognition from "./pages/ObjectRecognition";
+import RobotLocalization from "./pages/RobotLocalization";
 
 const queryClient = new QueryClient();
 
@@ -27,6 +28,7 @@ const App = () => (
           <Route path="/object-detection" element={<ObjectDetection />} />
           <Route path="/image-stitching" element={<ImageStitching />} />
           <Route path="/object-recognition" element={<ObjectRecognition />} />
+          <Route path="/robot-localization" element={<RobotLocalization />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

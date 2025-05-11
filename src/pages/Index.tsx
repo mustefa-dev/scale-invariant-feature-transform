@@ -1,120 +1,72 @@
 
-import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { toast } from "@/components/ui/sonner";
-import { useNavigate } from "react-router-dom";
-import { AlertCircle, Eye, Image, Layers, Search, Camera } from "lucide-react";
-import { fetchAPI } from "@/utils/api";
-import config from "@/config";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Link } from "react-router-dom";
+import { Compass, Image, Layers, Navigation, Route } from "lucide-react";
+
+const FEATURES = [
+  {
+    title: "Image Stitching",
+    description:
+      "Combine multiple photos into a panoramic image using SIFT features to identify overlapping areas.",
+    icon: <Image className="h-8 w-8" />,
+    link: "/image-stitching",
+  },
+  {
+    title: "Object Detection",
+    description:
+      "Detect if a specific object appears within a larger scene through feature matching.",
+    icon: <Layers className="h-8 w-8" />,
+    link: "/object-detection",
+  },
+  {
+    title: "Object Recognition",
+    description:
+      "Recognize objects by comparing them against a database of known items using SIFT features.",
+    icon: <Navigation className="h-8 w-8" />,
+    link: "/object-recognition",
+  },
+  {
+    title: "Object Tracking",
+    description:
+      "Track objects as they move across video frames to monitor their position over time.",
+    icon: <Route className="h-8 w-8" />,
+    link: "/object-tracking",
+  },
+  {
+    title: "Robot Localization",
+    description:
+      "Determine robot position in unknown environments using trinocular stereo vision and SIFT keypoints.",
+    icon: <Compass className="h-8 w-8" />,
+    link: "/robot-localization",
+  },
+];
 
 const Index = () => {
-  const [backendStatus, setBackendStatus] = useState<string>("Checking backend connection...");
-  const navigate = useNavigate();
-  
-  useEffect(() => {
-    // Check if backend is running
-    fetchAPI('/api/health')
-      .then(data => {
-        setBackendStatus("Connected to backend");
-        toast.success("Connected to Flask backend");
-      })
-      .catch(error => {
-        setBackendStatus("Backend connection failed");
-        toast.error(`Could not connect to Flask backend at ${config.apiUrl}. Please ensure it's running.`);
-        console.error("Backend connection error:", error);
-      });
-  }, []);
-
-  const applications = [
-    {
-      title: "Object Tracking Using SIFT Features",
-      description: "Track objects in videos using SIFT keypoint features",
-      path: "/object-tracking",
-      icon: <Eye className="h-10 w-10 text-blue-500" />
-    },
-    {
-      title: "Panorama Image Stitching Using SIFT and SURF",
-      description: "Create panoramas by stitching overlapping images",
-      path: "/panorama-stitching",
-      icon: <Layers className="h-10 w-10 text-green-500" />
-    },
-    {
-      title: "Object Detection with SIFT Features",
-      description: "Detect if an object appears in a scene using feature matching",
-      path: "/object-detection",
-      icon: <Search className="h-10 w-10 text-purple-500" />
-    },
-    {
-      title: "Image Stitching with SIFT",
-      description: "Stitch multiple images together using SIFT-based keypoint detection",
-      path: "/image-stitching",
-      icon: <Image className="h-10 w-10 text-orange-500" />
-    },
-    {
-      title: "Object Recognition Using SIFT",
-      description: "Recognize objects by matching against a database of known objects",
-      path: "/object-recognition",
-      icon: <Camera className="h-10 w-10 text-red-500" />
-    }
-  ];
-
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8 text-center">
-          <h1 className="text-4xl font-bold mb-4">Computer Vision Applications</h1>
-          <p className="text-xl text-gray-600 dark:text-gray-400">
-            Explore the power of SIFT algorithm in various computer vision tasks
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto px-4 py-12">
+        <div className="text-center mb-10">
+          <h1 className="text-4xl font-bold tracking-tight mb-4">Computer Vision with SIFT</h1>
+          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+            Explore the power of Scale-Invariant Feature Transform (SIFT) algorithms
+            for various computer vision applications
           </p>
-          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-            Backend Status: 
-            <span className={
-              backendStatus.includes("Connected") 
-                ? "text-green-500 ml-1 font-medium" 
-                : "text-red-500 ml-1 font-medium"
-            }>
-              {backendStatus}
-            </span>
-            {backendStatus.includes("failed") && (
-              <div className="mt-1 flex items-center justify-center">
-                <AlertCircle className="h-4 w-4 text-red-500 mr-1" />
-                <span className="text-xs text-red-500">
-                  Please run the Flask backend with: <code className="bg-gray-200 px-1 py-0.5 rounded text-red-600">python backend/app.py</code>
-                </span>
-              </div>
-            )}
-          </p>
-          <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-md max-w-2xl mx-auto">
-            <h2 className="text-lg font-medium mb-1">Deployment Information</h2>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Current environment: <code className="bg-gray-200 dark:bg-gray-800 px-1 py-0.5 rounded">{import.meta.env.MODE}</code>
-            </p>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              API URL: <code className="bg-gray-200 dark:bg-gray-800 px-1 py-0.5 rounded">{config.apiUrl}</code>
-            </p>
-          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {applications.map((app, index) => (
-            <Card key={index} className="overflow-hidden hover:shadow-lg transition-shadow">
-              <CardHeader>
-                <CardTitle>{app.title}</CardTitle>
-                <CardDescription>{app.description}</CardDescription>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
+          {FEATURES.map((feature) => (
+            <Card key={feature.title} className="flex flex-col">
+              <CardHeader className="pb-2">
+                <div className="mb-2">{feature.icon}</div>
+                <CardTitle>{feature.title}</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="h-40 bg-gray-200 dark:bg-gray-800 rounded-md flex items-center justify-center">
-                  {app.icon}
-                </div>
+              <CardContent className="flex-grow">
+                <p className="text-muted-foreground">{feature.description}</p>
               </CardContent>
               <CardFooter>
-                <Button 
-                  className="w-full"
-                  disabled={backendStatus.includes("failed")}
-                  onClick={() => navigate(app.path)}
-                >
-                  {backendStatus.includes("Connected") ? "Try Now" : "Backend Required"}
+                <Button asChild className="w-full">
+                  <Link to={feature.link}>Try it now</Link>
                 </Button>
               </CardFooter>
             </Card>
