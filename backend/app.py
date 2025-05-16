@@ -1,4 +1,3 @@
-
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 import os
@@ -13,368 +12,516 @@ load_dotenv()
 
 app = Flask(__name__)
 # Configure CORS with environment variable
-cors_origin = os.getenv('CORS_ORIGIN', 'http://localhost:3000')
+cors_origin = os.getenv('CORS_ORIGIN', 'http://localhost:3002')
 CORS(app, resources={r"/api/*": {"origins": cors_origin}})
 
 # Create directories for uploads and results if they don't exist
 os.makedirs('static/uploads', exist_ok=True)
 os.makedirs('static/results', exist_ok=True)
 
+
 @app.route('/api/health', methods=['GET'])
 def health_check():
     return jsonify({"status": "Flask backend is running!"})
+
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
     """Generic file upload endpoint that saves files to static/uploads"""
     if 'file' not in request.files:
         return jsonify({"error": "No file part"}), 400
-    
+
     files = request.files.getlist('file')
     if not files or files[0].filename == '':
         return jsonify({"error": "No file selected"}), 400
-    
+
     saved_files = []
-    
+
     for file in files:
         # Generate unique filename
         filename = str(uuid.uuid4()) + os.path.splitext(file.filename)[1]
         file_path = os.path.join('static/uploads', filename)
         file.save(file_path)
         saved_files.append(filename)
-    
+
     return jsonify({
         "message": "Files uploaded successfully",
         "filenames": saved_files
     })
+
 
 @app.route('/static/uploads/<filename>')
 def serve_upload(filename):
     """Serve uploaded files"""
     return send_from_directory('static/uploads', filename)
 
+
 @app.route('/static/results/<filename>')
 def serve_result(filename):
     """Serve result files"""
     return send_from_directory('static/results', filename)
 
-# ... keep existing code (stitch-images, detect-object, recognize-object, and track-object endpoints)
 
-@app.route('/api/robot-localization', methods=['POST'])
-def robot_localization():
-    """Process trinocular stereo images to perform robot localization and mapping"""
-    if 'images[]' not in request.files:
-        return jsonify({"error": "No images provided"}), 400
-    
-    images = request.files.getlist('images[]')
-    if len(images) != 3:
-        return jsonify({"error": "Exactly 3 images are required for trinocular stereo"}), 400
-    
-    # Save uploaded images
+@app.route('/api/stitch-images', methods=['POST'])
+def stitch_images():
+    """Stitch images using SIFT features"""
+    if 'files[]' not in request.files:
+        return jsonify({"error": "No files part"}), 400
+
+    files = request.files.getlist('files[]')
+    if len(files) < 2:
+        return jsonify({"error": "At least 2 images are required for stitching"}), 400
+
+    # Save uploaded files
     image_paths = []
-    image_filenames = []
-    for image in images:
-        if image.filename == '':
+    for file in files:
+        if file.filename == '':
             continue
-        filename = str(uuid.uuid4()) + os.path.splitext(image.filename)[1]
+        filename = str(uuid.uuid4()) + os.path.splitext(file.filename)[1]
         file_path = os.path.join('static/uploads', filename)
-        image.save(file_path)
+        file.save(file_path)
         image_paths.append(file_path)
-        image_filenames.append(filename)
-    
-    if len(image_paths) != 3:
-        return jsonify({"error": "Failed to save all three images"}), 400
-    
+
+    if len(image_paths) < 2:
+        return jsonify({"error": "At least 2 valid images are required"}), 400
+
     try:
         # Load images
-        left_img = cv2.imread(image_paths[0], cv2.IMREAD_GRAYSCALE)
-        center_img = cv2.imread(image_paths[1], cv2.IMREAD_GRAYSCALE)
-        right_img = cv2.imread(image_paths[2], cv2.IMREAD_GRAYSCALE)
-        
-        # Ensure all images were loaded successfully
-        if left_img is None or center_img is None or right_img is None:
-            return jsonify({"error": "Failed to load images"}), 400
-        
-        # Initialize SIFT detector for feature detection
+        images = []
+        for path in image_paths:
+            img = cv2.imread(path)
+            if img is None:
+                return jsonify({"error": f"Could not load image: {path}"}), 400
+            images.append(img)
+
+        # Use OpenCV's Stitcher
+        stitcher = cv2.Stitcher_create()
+        status, stitched = stitcher.stitch(images)
+
+        if status != cv2.Stitcher_OK:
+            error_messages = {
+                cv2.Stitcher_ERR_NEED_MORE_IMGS: "Not enough images for stitching",
+                cv2.Stitcher_ERR_HOMOGRAPHY_EST_FAIL: "Homography estimation failed",
+                cv2.Stitcher_ERR_CAMERA_PARAMS_ADJUST_FAIL: "Camera parameter adjustment failed"
+            }
+            return jsonify({"error": error_messages.get(status, "Stitching failed")}), 400
+
+        # Save result
+        result_filename = f"stitched_{uuid.uuid4()}.jpg"
+        result_path = os.path.join('static/results', result_filename)
+        cv2.imwrite(result_path, stitched)
+
+        return jsonify({
+            "message": "Images stitched successfully",
+            "result_filename": result_filename
+        })
+
+    except Exception as e:
+        return jsonify({"error": f"Error processing images: {str(e)}"}), 500
+
+
+@app.route('/api/detect-object', methods=['POST'])
+def detect_object():
+    """Detect if an object appears in a scene using SIFT features"""
+    if 'object' not in request.files or 'scene' not in request.files:
+        return jsonify({"error": "Missing object or scene image"}), 400
+
+    object_file = request.files['object']
+    scene_file = request.files['scene']
+
+    if object_file.filename == '' or scene_file.filename == '':
+        return jsonify({"error": "No file selected"}), 400
+
+    # Save uploaded files
+    object_filename = str(uuid.uuid4()) + os.path.splitext(object_file.filename)[1]
+    scene_filename = str(uuid.uuid4()) + os.path.splitext(scene_file.filename)[1]
+
+    object_path = os.path.join('static/uploads', object_filename)
+    scene_path = os.path.join('static/uploads', scene_filename)
+
+    object_file.save(object_path)
+    scene_file.save(scene_path)
+
+    try:
+        # Load images
+        obj_img = cv2.imread(object_path, 0)  # Grayscale
+        scene_img = cv2.imread(scene_path, 0)  # Grayscale
+        scene_color = cv2.imread(scene_path)  # Color for visualization
+
+        if obj_img is None or scene_img is None or scene_color is None:
+            return jsonify({"error": "Could not load images"}), 400
+
+        # Initialize SIFT detector
         sift = cv2.SIFT_create()
-        
-        # Detect keypoints and compute descriptors
-        kp_left, des_left = sift.detectAndCompute(left_img, None)
-        kp_center, des_center = sift.detectAndCompute(center_img, None)
-        kp_right, des_right = sift.detectAndCompute(right_img, None)
-        
-        # Initialize FLANN matcher for feature matching
+
+        # Find keypoints and descriptors
+        kp1, des1 = sift.detectAndCompute(obj_img, None)
+        kp2, des2 = sift.detectAndCompute(scene_img, None)
+
+        if des1 is None or des2 is None:
+            return jsonify({"error": "Could not detect features in images"}), 400
+
+        # FLANN matcher
         FLANN_INDEX_KDTREE = 1
         index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
         search_params = dict(checks=50)
         flann = cv2.FlannBasedMatcher(index_params, search_params)
-        
-        # Match left-center and center-right
-        matches_lc = flann.knnMatch(des_left, des_center, k=2)
-        matches_cr = flann.knnMatch(des_center, des_right, k=2)
-        
-        # Apply ratio test to get good matches
-        good_matches_lc = []
-        for m, n in matches_lc:
-            if m.distance < 0.7 * n.distance:
-                good_matches_lc.append(m)
-        
-        good_matches_cr = []
-        for m, n in matches_cr:
-            if m.distance < 0.7 * n.distance:
-                good_matches_cr.append(m)
-        
-        # Get matching keypoints
-        left_pts = np.float32([kp_left[m.queryIdx].pt for m in good_matches_lc]).reshape(-1, 1, 2)
-        center_pts1 = np.float32([kp_center[m.trainIdx].pt for m in good_matches_lc]).reshape(-1, 1, 2)
-        center_pts2 = np.float32([kp_center[m.queryIdx].pt for m in good_matches_cr]).reshape(-1, 1, 2)
-        right_pts = np.float32([kp_right[m.trainIdx].pt for m in good_matches_cr]).reshape(-1, 1, 2)
-        
-        # Calculate fundamental matrices
-        F_lc, mask_lc = cv2.findFundamentalMat(left_pts, center_pts1, cv2.FM_RANSAC, 3, 0.99)
-        F_cr, mask_cr = cv2.findFundamentalMat(center_pts2, right_pts, cv2.FM_RANSAC, 3, 0.99)
-        
-        # Use only inliers for triangulation
-        mask_lc = mask_lc.ravel().astype(bool)
-        mask_cr = mask_cr.ravel().astype(bool)
-        
-        left_pts = left_pts[mask_lc]
-        center_pts1 = center_pts1[mask_lc]
-        center_pts2 = center_pts2[mask_cr]
-        right_pts = right_pts[mask_cr]
-        
-        # Simulate camera calibration parameters (in a real system, these would be calibrated)
-        # These are simplified values for demonstration
-        focal_length = 1000  # pixels
-        center_x = left_img.shape[1] / 2
-        center_y = left_img.shape[0] / 2
-        baseline = 0.1  # meters between cameras
-        
-        # Camera intrinsics matrix
-        K = np.array([
-            [focal_length, 0, center_x],
-            [0, focal_length, center_y],
-            [0, 0, 1]
-        ])
-        
-        # Define camera matrices (simplified setup)
-        # Left camera is at origin
-        P_left = np.hstack((K, np.zeros((3, 1))))
-        
-        # Center camera is translated along X-axis
-        R_center = np.eye(3)
-        t_center = np.array([[baseline, 0, 0]]).T
-        P_center = np.dot(K, np.hstack((R_center, t_center)))
-        
-        # Right camera is further translated along X-axis
-        R_right = np.eye(3)
-        t_right = np.array([[2 * baseline, 0, 0]]).T
-        P_right = np.dot(K, np.hstack((R_right, t_right)))
-        
-        # Triangulate 3D points from left-center stereo pair
-        points_4d = cv2.triangulatePoints(P_left, P_center, left_pts.reshape(-1, 2).T, center_pts1.reshape(-1, 2).T)
-        
-        # Convert to homogeneous coordinates
-        points_3d = points_4d[:3, :] / points_4d[3, :]
-        
-        # Convert to list of 3D points for output
-        keypoints_3d = []
-        for i in range(points_3d.shape[1]):
-            x, y, z = points_3d[0, i], points_3d[1, i], points_3d[2, i]
-            # Filter out points that are too far or have negative z
-            if -10 < x < 10 and -10 < y < 10 and 0 < z < 20:
-                keypoints_3d.append({
-                    "x": float(x),
-                    "y": float(y),
-                    "z": float(z)
-                })
-        
-        # Simulate robot pose calculation from the point cloud
-        # In a real system, this would involve more complex SLAM algorithms
-        robot_x = np.mean([p["x"] for p in keypoints_3d])
-        robot_y = np.mean([p["y"] for p in keypoints_3d])
-        robot_z = np.mean([p["z"] for p in keypoints_3d])
-        
-        # Get median values for more robust position estimate
-        robot_x_median = float(np.median([p["x"] for p in keypoints_3d]))
-        robot_y_median = float(np.median([p["y"] for p in keypoints_3d]))
-        robot_z_median = float(np.median([p["z"] for p in keypoints_3d]))
-        
-        # Simulate robot orientation (would be calculated from visual odometry in a real system)
-        roll = np.random.uniform(-5, 5)  # degrees
-        pitch = np.random.uniform(-5, 5)  # degrees
-        yaw = np.random.uniform(-10, 10)  # degrees
-        
-        # Generate a simple map visualization
-        map_width, map_height = 800, 600
-        map_img = np.ones((map_height, map_width, 3), dtype=np.uint8) * 255
-        
-        # Scale factor to convert 3D coordinates to pixel coordinates
-        scale = min(map_width / 20, map_height / 20)
-        center_x, center_y = map_width // 2, map_height // 2
-        
-        # Draw grid lines
-        for i in range(-10, 11, 1):
-            # X grid lines
-            x1, y1 = int(center_x + i * scale), 0
-            x2, y2 = int(center_x + i * scale), map_height
-            cv2.line(map_img, (x1, y1), (x2, y2), (220, 220, 220), 1)
-            
-            # Y grid lines
-            x1, y1 = 0, int(center_y - i * scale)
-            x2, y2 = map_width, int(center_y - i * scale)
-            cv2.line(map_img, (x1, y1), (x2, y2), (220, 220, 220), 1)
-        
-        # Draw X and Y axes
-        cv2.line(map_img, (0, center_y), (map_width, center_y), (150, 150, 150), 2)  # X-axis
-        cv2.line(map_img, (center_x, map_height), (center_x, 0), (150, 150, 150), 2)  # Y-axis
-        
-        # Draw 3D points on map
-        for point in keypoints_3d:
-            x = int(center_x + point["x"] * scale)
-            y = int(center_y - point["y"] * scale)  # Flip Y for image coordinates
-            
-            if 0 <= x < map_width and 0 <= y < map_height:
-                # Color based on height (Z value)
-                z_normalized = max(0, min(1, point["z"] / 5))
-                color = (int(255 * (1 - z_normalized)), 
-                         int(100 + 155 * z_normalized), 
-                         int(255 * z_normalized))
-                cv2.circle(map_img, (x, y), 2, color, -1)
-        
-        # Draw robot position
-        robot_map_x = int(center_x + robot_x_median * scale)
-        robot_map_y = int(center_y - robot_y_median * scale)
-        cv2.circle(map_img, (robot_map_x, robot_map_y), 10, (0, 0, 255), -1)
-        
-        # Draw robot direction (based on yaw)
-        direction_length = 30
-        dx = direction_length * np.cos(np.radians(yaw))
-        dy = direction_length * np.sin(np.radians(yaw))
-        cv2.line(map_img, 
-                 (robot_map_x, robot_map_y),
-                 (int(robot_map_x + dx), int(robot_map_y - dy)), 
-                 (0, 0, 255), 3)
-        
-        # Generate simulated trajectory
-        trajectory_points = []
-        num_trajectory_points = 10
-        
-        for i in range(num_trajectory_points):
-            # Generate points along a simulated path
-            t = i / (num_trajectory_points - 1) if num_trajectory_points > 1 else 0
-            x = robot_x_median - t * 2
-            y = robot_y_median - t * 1.5 * np.sin(t * 2)
-            z = robot_z_median
-            
-            trajectory_points.append({
-                "position": {"x": float(x), "y": float(y), "z": float(z)},
-                "timestamp": int(time.time() - (num_trajectory_points - i) * 1000)
-            })
-            
-            # Draw trajectory on map
-            if i > 0:
-                prev_x = int(center_x + trajectory_points[i-1]["position"]["x"] * scale)
-                prev_y = int(center_y - trajectory_points[i-1]["position"]["y"] * scale)
-                curr_x = int(center_x + x * scale)
-                curr_y = int(center_y - y * scale)
-                cv2.line(map_img, (prev_x, prev_y), (curr_x, curr_y), (0, 255, 0), 2)
-        
-        # Add a legend
-        legend_x, legend_y = 20, 20
-        cv2.putText(map_img, "Robot Position", (legend_x, legend_y), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
-        cv2.putText(map_img, "Trajectory", (legend_x, legend_y + 20), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-        cv2.putText(map_img, "3D Points", (legend_x, legend_y + 40), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 255), 1)
-        
-        # Save the map image
-        map_filename = f"map_{uuid.uuid4()}.png"
-        map_path = os.path.join('static/results', map_filename)
-        cv2.imwrite(map_path, map_img)
-        
-        # Draw matched keypoints on images for visualization
-        left_img_color = cv2.imread(image_paths[0])
-        center_img_color = cv2.imread(image_paths[1])
-        right_img_color = cv2.imread(image_paths[2])
-        
-        # Draw keypoints on left image
-        for pt in left_pts:
-            x, y = int(pt[0][0]), int(pt[0][1])
-            cv2.circle(left_img_color, (x, y), 4, (0, 255, 0), -1)
-        
-        # Draw keypoints on center image
-        for pt in np.vstack([center_pts1, center_pts2]):
-            x, y = int(pt[0][0]), int(pt[0][1])
-            cv2.circle(center_img_color, (x, y), 4, (0, 255, 0), -1)
-        
-        # Draw keypoints on right image
-        for pt in right_pts:
-            x, y = int(pt[0][0]), int(pt[0][1])
-            cv2.circle(right_img_color, (x, y), 4, (0, 255, 0), -1)
-        
-        # Save visualization images
-        vis_left_filename = f"vis_left_{uuid.uuid4()}.jpg"
-        vis_center_filename = f"vis_center_{uuid.uuid4()}.jpg"
-        vis_right_filename = f"vis_right_{uuid.uuid4()}.jpg"
-        
-        vis_left_path = os.path.join('static/results', vis_left_filename)
-        vis_center_path = os.path.join('static/results', vis_center_filename)
-        vis_right_path = os.path.join('static/results', vis_right_filename)
-        
-        cv2.imwrite(vis_left_path, left_img_color)
-        cv2.imwrite(vis_center_path, center_img_color)
-        cv2.imwrite(vis_right_path, right_img_color)
-        
-        # Calculate confidence based on number of good matches
-        confidence = min(100, len(keypoints_3d) / 5 * 100)
-        
+
+        matches = flann.knnMatch(des1, des2, k=2)
+
+        # Apply ratio test
+        good_matches = []
+        for m, n in matches:
+            if m.distance < 0.75 * n.distance:
+                good_matches.append(m)
+
+        # Check if we have enough good matches
+        MIN_MATCH_COUNT = 10
+        if len(good_matches) >= MIN_MATCH_COUNT:
+            src_pts = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+            dst_pts = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+
+            # Find homography
+            M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+
+            # Get dimensions of object image
+            h, w = obj_img.shape
+
+            # Define corners of object to be detected
+            pts = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
+
+            # Transform corners to scene coordinate system
+            dst = cv2.perspectiveTransform(pts, M)
+
+            # Draw bounding box
+            scene_color = cv2.polylines(scene_color, [np.int32(dst)], True, (0, 255, 0), 3)
+
+            # Draw matches visualization
+            match_img = cv2.drawMatches(obj_img, kp1, scene_img, kp2, good_matches, None,
+                                        flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+
+            detected = True
+            message = f"Object found! {len(good_matches)} good matches."
+        else:
+            match_img = cv2.drawMatches(obj_img, kp1, scene_img, kp2, good_matches, None,
+                                        flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+            detected = False
+            message = f"Not enough matches found - {len(good_matches)}/{MIN_MATCH_COUNT}"
+            scene_color = scene_img  # Use original scene for result
+
+        # Save result images
+        result_filename = f"detection_{uuid.uuid4()}.jpg"
+        result_path = os.path.join('static/results', result_filename)
+
+        match_filename = f"matches_{uuid.uuid4()}.jpg"
+        match_path = os.path.join('static/results', match_filename)
+
+        cv2.imwrite(result_path, scene_color)
+        cv2.imwrite(match_path, match_img)
+
         return jsonify({
-            "message": "Robot localization processed successfully",
-            "keypoints_3d": keypoints_3d,
-            "robot_position": {
-                "x": robot_x_median,
-                "y": robot_y_median,
-                "z": robot_z_median
-            },
-            "robot_orientation": {
-                "roll": float(roll),
-                "pitch": float(pitch),
-                "yaw": float(yaw)
-            },
-            "robot_pose": {
-                "position": {
-                    "x": robot_x_median,
-                    "y": robot_y_median,
-                    "z": robot_z_median
-                },
-                "orientation": {
-                    "roll": float(roll),
-                    "pitch": float(pitch),
-                    "yaw": float(yaw)
-                }
-            },
-            "trajectory": trajectory_points,
-            "confidence": float(confidence),
-            "keypoints_count": len(keypoints_3d),
-            "matching_points": len(good_matches_lc) + len(good_matches_cr),
-            "map_image": map_filename,
-            "visualizations": {
-                "left_image": vis_left_filename,
-                "center_image": vis_center_filename,
-                "right_image": vis_right_filename
-            },
-            "original_images": image_filenames
+            "message": message,
+            "detected": detected,
+            "result_filename": result_filename,
+            "matches_filename": match_filename,
+            "object_filename": object_filename,
+            "scene_filename": scene_filename
         })
-    
+
     except Exception as e:
         return jsonify({"error": f"Error processing images: {str(e)}"}), 500
 
-# Make sure Flask serves static files
+
+@app.route('/api/recognize-object', methods=['POST'])
+def recognize_object():
+    """Recognize object from database using SIFT features"""
+    if 'query' not in request.files or 'known_objects[]' not in request.files:
+        return jsonify({"error": "Missing query image or known objects"}), 400
+
+    query_file = request.files['query']
+    known_files = request.files.getlist('known_objects[]')
+
+    if query_file.filename == '' or len(known_files) == 0:
+        return jsonify({"error": "Missing files"}), 400
+
+    # Save query image
+    query_filename = str(uuid.uuid4()) + os.path.splitext(query_file.filename)[1]
+    query_path = os.path.join('static/uploads', query_filename)
+    query_file.save(query_path)
+
+    # Save known objects
+    known_filenames = []
+    known_paths = []
+    for file in known_files:
+        if file.filename == '':
+            continue
+        filename = str(uuid.uuid4()) + os.path.splitext(file.filename)[1]
+        file_path = os.path.join('static/uploads', filename)
+        file.save(file_path)
+        known_filenames.append(filename)
+        known_paths.append(file_path)
+
+    try:
+        # Load query image
+        query_img = cv2.imread(query_path, 0)  # Grayscale
+        query_color = cv2.imread(query_path)  # Color for visualization
+
+        if query_img is None:
+            return jsonify({"error": "Could not load query image"}), 400
+
+        # Initialize SIFT detector
+        sift = cv2.SIFT_create()
+
+        # Get query keypoints and descriptors
+        kp_query, des_query = sift.detectAndCompute(query_img, None)
+
+        if des_query is None:
+            return jsonify({"error": "Could not detect features in query image"}), 400
+
+        best_match = None
+        best_match_count = 0
+        best_match_idx = -1
+
+        # FLANN matcher
+        FLANN_INDEX_KDTREE = 1
+        index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
+        search_params = dict(checks=50)
+        flann = cv2.FlannBasedMatcher(index_params, search_params)
+
+        # Check each known object
+        for i, known_path in enumerate(known_paths):
+            known_img = cv2.imread(known_path, 0)  # Grayscale
+
+            if known_img is None:
+                continue
+
+            # Get keypoints and descriptors for known object
+            kp_known, des_known = sift.detectAndCompute(known_img, None)
+
+            if des_known is None:
+                continue
+
+            # Match descriptors
+            matches = flann.knnMatch(des_query, des_known, k=2)
+
+            # Apply ratio test
+            good_matches = []
+            for m, n in matches:
+                if m.distance < 0.75 * n.distance:
+                    good_matches.append(m)
+
+            # If this known object has more good matches, it's a better match
+            if len(good_matches) > best_match_count:
+                best_match_count = len(good_matches)
+                best_match = good_matches
+                best_match_idx = i
+
+        # Check if we found any good matches
+        if best_match_count > 10:
+            # Get the best matching known image
+            best_known_path = known_paths[best_match_idx]
+            best_known_filename = known_filenames[best_match_idx]
+            best_known_img = cv2.imread(best_known_path, 0)
+
+            # Draw matches visualization
+            kp_best_known, _ = sift.detectAndCompute(best_known_img, None)
+            match_img = cv2.drawMatches(query_img, kp_query, best_known_img, kp_best_known,
+                                        best_match, None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+
+            # Save match visualization
+            match_filename = f"recognition_{uuid.uuid4()}.jpg"
+            match_path = os.path.join('static/results', match_filename)
+            cv2.imwrite(match_path, match_img)
+
+            return jsonify({
+                "message": f"Object recognized! {best_match_count} good matches.",
+                "recognized": True,
+                "matches_filename": match_filename,
+                "query_filename": query_filename,
+                "matching_object_filename": best_known_filename
+            })
+        else:
+            return jsonify({
+                "message": "Object not recognized.",
+                "recognized": False,
+                "query_filename": query_filename
+            })
+
+    except Exception as e:
+        return jsonify({"error": f"Error processing images: {str(e)}"}), 500
+
+
+@app.route('/api/localize-robot', methods=['POST'])
+def localize_robot():
+    """Compute 3D points for robot localization using stereo images"""
+    if 'left_image' not in request.files or 'right_image' not in request.files:
+        return jsonify({"error": "Missing left or right stereo image"}), 400
+
+    left_image_file = request.files['left_image']
+    right_image_file = request.files['right_image']
+
+    if left_image_file.filename == '' or right_image_file.filename == '':
+        return jsonify({"error": "No file selected"}), 400
+
+    # Save uploaded images
+    left_image_path = os.path.join('static/uploads', str(uuid.uuid4()) + os.path.splitext(left_image_file.filename)[1])
+    right_image_path = os.path.join('static/uploads',
+                                    str(uuid.uuid4()) + os.path.splitext(right_image_file.filename)[1])
+    left_image_file.save(left_image_path)
+    right_image_file.save(right_image_path)
+
+    try:
+        # Load stereo images
+        left_img = cv2.imread(left_image_path, cv2.IMREAD_GRAYSCALE)
+        right_img = cv2.imread(right_image_path, cv2.IMREAD_GRAYSCALE)
+
+        if left_img is None or right_img is None:
+            return jsonify({"error": "Could not load stereo images"}), 400
+
+        # Compute disparity map
+        stereo = cv2.StereoBM_create(numDisparities=16, blockSize=15)
+        disparity = stereo.compute(left_img, right_img)
+
+        # Define a sample Q matrix (replace with actual calibration data)
+        Q_matrix = np.array([[1, 0, 0, -320],
+                             [0, 1, 0, -240],
+                             [0, 0, 0, 500],
+                             [0, 0, 1, 0]])
+
+        # Reproject disparity to 3D space
+        points_3D = cv2.reprojectImageTo3D(disparity, Q_matrix)
+
+        # Filter valid points
+        mask = disparity > disparity.min()
+        points_3D = points_3D[mask]
+
+        # Save results
+        result_filename = f"localization_{uuid.uuid4()}.npy"
+        result_path = os.path.join('static/results', result_filename)
+        np.save(result_path, points_3D)
+
+        return jsonify({
+            "message": "3D points computed successfully",
+            "result_filename": result_filename
+        })
+
+    except Exception as e:
+        return jsonify({"error": f"Error processing images: {str(e)}"}), 500
+
+
+@app.route('/api/track-object', methods=['POST'])
+def track_object():
+    """Simulate object tracking in video using SIFT features"""
+    # In a real implementation, this would process a video file
+    # For this demo, we'll simulate tracking with a sequence of processing steps
+
+    if 'video' not in request.files:
+        return jsonify({"error": "No video file provided"}), 400
+
+    video_file = request.files['video']
+
+    if video_file.filename == '':
+        return jsonify({"error": "No file selected"}), 400
+
+    # Save the video file
+    video_filename = str(uuid.uuid4()) + os.path.splitext(video_file.filename)[1]
+    video_path = os.path.join('static/uploads', video_filename)
+    video_file.save(video_path)
+
+    try:
+        # Open the video file
+        cap = cv2.VideoCapture(video_path)
+
+        if not cap.isOpened():
+            return jsonify({"error": "Could not open video file"}), 400
+
+        # Get video properties
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+
+        # Create output video writer
+        output_filename = f"tracked_{uuid.uuid4()}.mp4"
+        output_path = os.path.join('static/results', output_filename)
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+
+        # Read first frame and select object
+        ret, first_frame = cap.read()
+        if not ret:
+            return jsonify({"error": "Could not read first frame"}), 400
+
+        # For demo purposes, we'll track something in the center of the frame
+        # A real implementation would let the user select the object
+        x, y, w, h = width // 4, height // 4, width // 2, height // 2
+        track_window = (x, y, w, h)
+
+        # Set up the ROI for tracking
+        roi = first_frame[y:y + h, x:x + w]
+        hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+
+        # Use a simple histogram-based tracker for demo
+        roi_hist = cv2.calcHist([hsv_roi], [0], None, [180], [0, 180])
+        cv2.normalize(roi_hist, roi_hist, 0, 255, cv2.NORM_MINMAX)
+
+        # Setup the termination criteria
+        term_criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 1)
+
+        # Draw the initial tracking window
+        tracking_result = first_frame.copy()
+        cv2.rectangle(tracking_result, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        out.write(tracking_result)
+
+        # Process a limited number of frames for the demo
+        max_frames = min(100, int(cap.get(cv2.CAP_PROP_FRAME_COUNT)))
+
+        for _ in range(max_frames - 1):
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+            dst = cv2.calcBackProject([hsv], [0], roi_hist, [0, 180], 1)
+
+            # Apply camshift
+            ret, track_window = cv2.CamShift(dst, track_window, term_criteria)
+
+            # Draw tracking result
+            pts = cv2.boxPoints(ret).astype(int)
+            tracking_result = cv2.polylines(frame.copy(), [pts], True, (0, 255, 0), 2)
+
+            out.write(tracking_result)
+
+        # Release resources
+        cap.release()
+        out.release()
+
+        # Save a thumbnail from the tracked video
+        thumbnail_filename = f"thumbnail_{uuid.uuid4()}.jpg"
+        thumbnail_path = os.path.join('static/results', thumbnail_filename)
+
+        # Re-open video to get a frame for the thumbnail
+        cap = cv2.VideoCapture(output_path)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, max_frames // 2)  # Get a frame from the middle
+        ret, thumb_frame = cap.read()
+        if ret:
+            cv2.imwrite(thumbnail_path, thumb_frame)
+        cap.release()
+
+        return jsonify({
+            "message": "Video processed successfully",
+            "video_filename": output_filename,
+            "thumbnail_filename": thumbnail_filename
+        })
+
+    except Exception as e:
+        return jsonify({"error": f"Error processing images: {str(e)}"}), 500
+
+
 @app.route('/')
 def index():
     return jsonify({"message": "SIFT Computer Vision API is running"})
+
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
